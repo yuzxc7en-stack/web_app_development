@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block title %}登入 - 賽特選房系統{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card shadow mt-5">
+            <div class="card-body p-5">
+                <h1 class="text-center mb-4">🎰 登入系統</h1>
+                
+                <form method="POST" action="{{ url_for('auth.login') }}">
+                    <!-- 帳號輸入 -->
+                    <div class="mb-3">
+                        <label for="username" class="form-label">帳號</label>
+                        <input 
+                            type="text" 
+                            class="form-control" 
+                            id="username" 
+                            name="username" 
+                            placeholder="輸入帳號"
+                            required
+                        >
+                    </div>
+
+                    <!-- 密碼輸入 -->
+                    <div class="mb-3">
+                        <label for="password" class="form-label">密碼</label>
+                        <input 
+                            type="password" 
+                            class="form-control" 
+                            id="password" 
+                            name="password" 
+                            placeholder="輸入密碼"
+                            required
+                        >
+                    </div>
+
+                    <!-- 登入按鈕 -->
+                    <button type="submit" class="btn btn-primary w-100 py-2">
+                        登入
+                    </button>
+                </form>
+
+                <!-- 提示信息 -->
+                <hr class="my-4">
+                <p class="text-center text-muted small">
+                    測試帳號：admin / password
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

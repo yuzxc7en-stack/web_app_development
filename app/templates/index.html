@@ -1,0 +1,242 @@
+{% extends "base.html" %}
+
+{% block title %}主控台 - 賽特選房系統{% endblock %}
+
+{% block content %}
+<div class="row">
+    <!-- 左側：使用者信息與風控設定 -->
+    <div class="col-md-4 mb-4">
+        <!-- 帳戶概覽 -->
+        <div class="card shadow-sm mb-3">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">📊 帳戶概覽</h5>
+            </div>
+            <div class="card-body">
+                <p class="mb-2">
+                    <strong>使用者：</strong> {{ user.username }}
+                </p>
+                <p class="mb-2">
+                    <strong>初始本金：</strong> 
+                    <span class="badge bg-success">NT$ {{ "%.2f" % user.initial_balance }}</span>
+                </p>
+                <p class="mb-2">
+                    <strong>目前餘額：</strong>
+                    <span class="badge" style="background-color: {% if current_balance >= initial_balance %}green{% else %}red{% endif %};">
+                        NT$ {{ "%.2f" % user.current_balance }}
+                    </span>
+                </p>
+                <p class="mb-0">
+                    <strong>目前虧損：</strong>
+                    <span class="badge bg-danger">NT$ {{ "%.2f" % current_loss }} ({{ loss_ratio }}%)</span>
+                </p>
+            </div>
+        </div>
+
+        <!-- 風控設定 -->
+        <div class="card shadow-sm mb-3">
+            <div class="card-header bg-warning text-dark">
+                <h5 class="mb-0">⚙️ 風控設定</h5>
+            </div>
+            <div class="card-body">
+                <form id="settingsForm">
+                    <!-- 每日出金目標 -->
+                    <div class="mb-3">
+                        <label for="dailyTarget" class="form-label">每日出金目標 (NT$)</label>
+                        <input 
+                            type="number" 
+                            class="form-control" 
+                            id="dailyTarget" 
+                            name="daily_target" 
+                            value="{{ settings.daily_target if settings else '' }}"
+                            step="100"
+                            min="0"
+                            required
+                        >
+                    </div>
+
+                    <!-- 停損設定 -->
+                    <div class="mb-3">
+                        <label for="stopLoss" class="form-label">停損金額 (NT$)</label>
+                        <input 
+                            type="number" 
+                            class="form-control" 
+                            id="stopLoss" 
+                            name="stop_loss_amount" 
+                            value="{{ settings.stop_loss_amount if settings and settings.stop_loss_amount else '' }}"
+                            step="100"
+                            min="0"
+                        >
+                        <small class="text-muted">達到此金額後自動停損</small>
+                    </div>
+
+                    <!-- 自動操作開關 -->
+                    <div class="form-check form-switch mb-3">
+                        <input 
+                            class="form-check-input" 
+                            type="checkbox" 
+                            id="autoPlay" 
+                            name="auto_play_enabled"
+                            {% if settings and settings.auto_play_enabled %}checked{% endif %}
+                        >
+                        <label class="form-check-label" for="autoPlay">
+                            啟用自動操作
+                        </label>
+                    </div>
+
+                    <!-- 提交按鈕 -->
+                    <button type="submit" class="btn btn-warning w-100">
+                        💾 保存設定
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- 停損狀態 -->
+        <div class="alert {% if stop_loss_triggered %}alert-danger{% else %}alert-info{% endif %}">
+            <strong>🛑 停損狀態：</strong>
+            {% if stop_loss_triggered %}
+            <span class="text-danger">已觸發停損</span>
+            {% else %}
+            <span>未觸發 (閾值: NT$ {{ "%.2f" % stop_loss_threshold if stop_loss_threshold else 'N/A' }})</span>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- 右側：推薦房間 & 實時監控 -->
+    <div class="col-md-8">
+        <!-- 推薦房間 -->
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0">🎯 推薦房間</h5>
+            </div>
+            <div class="card-body">
+                <table class="table table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>房間代碼</th>
+                            <th>房間名稱</th>
+                            <th>勝率</th>
+                            <th>賠率</th>
+                            <th>最後更新</th>
+                        </tr>
+                    </thead>
+                    <tbody id="roomsTable">
+                        {% if rooms %}
+                            {% for room in rooms %}
+                            <tr>
+                                <td><strong>{{ room.room_code }}</strong></td>
+                                <td>{{ room.room_name }}</td>
+                                <td>
+                                    <span class="badge" style="background-color: {% if room.win_rate >= 55 %}green{% elif room.win_rate >= 50 %}blue{% else %}orange{% endif %};">
+                                        {{ "%.1f" % room.win_rate }}%
+                                    </span>
+                                </td>
+                                <td>{{ "%.2f" % room.current_odds }}</td>
+                                <td><small>{{ room.last_updated.strftime('%H:%M:%S') }}</small></td>
+                            </tr>
+                            {% endfor %}
+                        {% else %}
+                        <tr>
+                            <td colspan="5" class="text-center text-muted">暫無房間數據</td>
+                        </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 最近警告 -->
+        <div class="card shadow-sm">
+            <div class="card-header bg-danger text-white">
+                <h5 class="mb-0">⚠️ 最近警告</h5>
+            </div>
+            <div class="card-body">
+                <div id="alertsContainer">
+                    {% if recent_alerts %}
+                        {% for alert in recent_alerts %}
+                        <div class="alert alert-warning alert-dismissible fade show" role="alert">
+                            <strong>{{ alert.alert_type }}：</strong> {{ alert.alert_message }}
+                            <br>
+                            <small class="text-muted">{{ alert.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</small>
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                    <p class="text-muted">目前無警告</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 隱藏的監控狀態區 -->
+<div id="monitorStatus" style="display: none;"></div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// 每 5 秒輪詢一次監控狀態
+setInterval(() => {
+    fetch('{{ url_for("api.monitor_status") }}')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                const status = data.data;
+                
+                // 更新房間狀態
+                if (status.room_status) {
+                    const roomsTable = document.getElementById('roomsTable');
+                    roomsTable.innerHTML = status.room_status.map(room => `
+                        <tr>
+                            <td><strong>${room.room_code}</strong></td>
+                            <td>${room.room_name}</td>
+                            <td>
+                                <span class="badge" style="background-color: ${room.win_rate >= 55 ? 'green' : room.win_rate >= 50 ? 'blue' : 'orange'};">
+                                    ${room.win_rate.toFixed(1)}%
+                                </span>
+                            </td>
+                            <td>${room.current_odds.toFixed(2)}</td>
+                            <td><small>${new Date(room.last_updated).toLocaleTimeString()}</small></td>
+                        </tr>
+                    `).join('');
+                }
+            }
+        })
+        .catch(error => console.error('監控更新失敗:', error));
+}, 5000);
+
+// 風控設定表單提交
+document.getElementById('settingsForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const formData = {
+        daily_target: parseFloat(document.getElementById('dailyTarget').value),
+        target_type: 'amount',
+        stop_loss_amount: parseFloat(document.getElementById('stopLoss').value) || null,
+        auto_play_enabled: document.getElementById('autoPlay').checked
+    };
+    
+    try {
+        const response = await fetch('{{ url_for("strategy.update_settings") }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(formData)
+        });
+        
+        const result = await response.json();
+        if (result.success) {
+            alert('✅ 設定保存成功！');
+            location.reload();
+        } else {
+            alert('❌ 設定保存失敗: ' + result.error);
+        }
+    } catch (error) {
+        alert('❌ 請求失敗: ' + error.message);
+    }
+});
+</script>
+{% endblock %}
